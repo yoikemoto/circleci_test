@@ -1,0 +1,110 @@
+references:
+  container_config: &container_config
+    working_directory: ~/app
+    docker:
+      - image: circleci/ruby:2.5.1-node
+        environment:
+          DATABASE_HOST: 127.0.0.1
+          BUNDLE_PATH: vendor/bundle
+          RAILS_ENV: test
+      - image: mysql:5.7
+        command: mysqld --max_allowed_packet=16MB --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --innodb-large-prefix=true --innodb-file-format=Barracuda
+        environment:
+          TZ: /usr/share/zoneinfo/Asia/Tokyo
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_DATABASE: circleci_test_test
+          MYSQL_USER: root
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_ROOT_PASSWORD: ''
+  workspace_root: &workspace_root
+    /tmp/workspace
+  attach_workspace: &attach_workspace
+    attach_workspace:
+      at: *workspace_root
+  load_code: &load_code
+    run:
+      name: load code
+      command: |
+        mv /tmp/workspace/store/* /tmp/workspace/store/.[!.]* .
+
+  save_kokutai_cache_key: &save_kokutai_cache_key
+      key: cache-kokutai-{{ .Branch }}-{{ checksum "yarn.lock" }}-{{ checksum "Gemfile.lock" }}
+      paths:
+        - node_modules
+        - .cache/yarn
+        - .yarn
+        - .bundle
+        - vendor/bundle
+  restore_kokutai_cache_key: &restore_kokutai_cache_key
+      keys:
+        - cache-kokutai-{{ .Branch }}-{{ checksum "yarn.lock" }}-{{ checksum "Gemfile.lock" }}
+        - cache-kokutai-{{ .Branch }}-{{ checksum "yarn.lock" }}
+        - cache-kokutai-{{ .Branch }}
+
+
+version: 2
+jobs:
+  setup:
+    <<: *container_config
+    steps:
+      - checkout
+      - run:
+          name: Node & Yarn version
+          command: |
+            echo "Node: $(node -v)"
+            echo "Yarn : $(yarn --version)"
+      - run:
+          name: Ruby & Bundler version
+          command: |
+            echo "Ruby: $(ruby -v)"
+            echo "Bundler: $(bundle -v)"
+      - restore_cache:
+          <<: *restore_kokutai_cache_key
+      - run:
+          name: Install deps (Frontend app)
+          command: ./bin/yarn
+      - run:
+          name: Install deps (Rails app)
+          command: |
+            bundle check --path vendor/bundle || bundle install -j4 --path vendor/bundle
+      - save_cache:
+          <<: *save_kokutai_cache_key
+      - run:
+          name: move directory for stored
+          command: |
+            mkdir -p /tmp/workspace/store
+            mv * .[!.]* /tmp/workspace/store
+      - persist_to_workspace:
+          root: *workspace_root
+          paths:
+            - .
+
+  test_rails_app:
+    <<: *container_config
+    steps:
+      - *attach_workspace
+      - *load_code
+      - restore_cache:
+          <<: *restore_kokutai_cache_key
+      - run:
+          name: Install deps (Rails app)
+          command: |
+            bundle check --path vendor/bundle || bundle install -j4 --path vendor/bundle
+      - run:
+          name: setup DB
+          command: DISABLE_SPRING=true ./bin/rake db:create db:migrate --trace
+      - run:
+          name: run lint check
+          command: ./bin/bundle exec rubocop
+      - run:
+          name: run test
+          command: ./bin/bundle exec rspec
+
+workflows:
+  version: 2
+  test_and_deploy:
+    jobs:
+      - setup
+      - test_rails_app:
+          requires:
+            - setup
