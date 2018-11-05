@@ -7,21 +7,49 @@
 # Ignore bundler config.
 /.bundle
 
+# Ignore the default SQLite database.
+/db/*.sqlite3
+/db/*.sqlite3-journal
+
 # Ignore all logfiles and tempfiles.
 /log/*
 /tmp/*
 !/log/.keep
 !/tmp/.keep
 
-# Ignore uploaded files in development
-/storage/*
-!/storage/.keep
-
 /node_modules
 /yarn-error.log
 
-/public/assets
 .byebug_history
+/public/packs
+/public/packs-test
+/public/assets
+/public/development/
+/public/test/
+/node_modules
+yarn-debug.log*
+.yarn-integrity
+.rspec
 
-# Ignore master key for decrypting credentials and more.
-/config/master.key
+/vendor/bundle
+*.swp
+.DS_Store
+.envrc
+.env
+.vagrant/
+
+.idea/
+*.iml
+
+# Configure local settings
+config/settings.local.yml
+config/settings/*.local.yml
+config/environments/*.local.yml
+
+# Coverage report
+coverage
+/public/packs
+/public/packs-test
+/node_modules
+yarn-debug.log*
+.yarn-integrity

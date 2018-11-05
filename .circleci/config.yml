@@ -1,0 +1,91 @@
+references:
+  container_config: &container_config
+    working_directory: ~/app
+    docker:
+      - image: circleci/ruby:2.5.1-node
+        environment:
+          DATABASE_HOST: '127.0.0.1'
+          RAILS_ENV: test
+      - image: mysql:5.7
+        command: mysqld --max_allowed_packet=16MB --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --innodb-large-prefix=true --innodb-file-format=Barracuda
+        environment:
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: circleci_test_test
+          MYSQL_ROOT_PASSWORD: ''
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_RANDOM_ROOT_PASSWORD: ''
+
+  restore_kokutai_cache_key: &restore_kokutai_cache_key
+      keys:
+        - cache-kokutai-{{ .Branch }}-{{ checksum "yarn.lock" }}-{{ checksum "Gemfile.lock" }}
+        - cache-kokutai-{{ .Branch }}-{{ checksum "yarn.lock" }}
+        - cache-kokutai-{{ .Branch }}
+
+  save_kokutai_cache_key: &save_kokutai_cache_key
+      key: cache-kokutai-{{ .Branch }}-{{ checksum "yarn.lock" }}-{{ checksum "Gemfile.lock" }}
+      paths:
+        - node_modules
+        - .cache/yarn
+        - .yarn
+        - .bundle
+        - vendor/bundle
+
+version: 2
+jobs:
+  setup:
+    <<: *container_config
+    steps:
+      - checkout
+
+      - run:
+          name: Node & Yarn version
+          command: |
+            echo "Node: $(node -v)"
+            echo "Yarn : $(yarn --version)"
+
+      - run:
+          name: Ruby & Bundler version
+          command: |
+            echo "Ruby: $(ruby -v)"
+            echo "Bundler: $(bundle -v)"
+      
+      - restore_cache:
+          <<: *restore_kokutai_cache_key
+
+      - run:
+          name: Install deps (Rails app)
+          command: |
+            bundle check --path=vendor/bundle || bundle install -j4 --path=vendor/bundle
+
+      - run:
+          name: Install deps (Frontend app)
+          command: ./bin/yarn
+
+      - save_cache:
+          <<: *save_kokutai_cache_key
+          
+      - run:
+          name: setup DB
+          command: bundle exec rake db:create db:migrate --trace
+          
+      - run:
+          name: run lint check
+          command: bundle exec rubocop
+
+  test_rails_app:
+    <<: *container_config
+    steps:
+      - restore_cache:
+          <<: *restore_kokutai_cache_key
+      - run:
+          name: run lint check
+          command: bundle exec rubocop
+
+workflows:
+  version: 2
+  test_and_deploy:
+    jobs:
+      - setup
+      - test_rails_app:
+          requires:
+            - setup
